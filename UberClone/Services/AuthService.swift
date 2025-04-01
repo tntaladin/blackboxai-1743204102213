@@ -1,65 +1,56 @@
 import Foundation
-import FirebaseAuth
-import Combine
 
 class AuthService: ObservableObject {
-    @Published var userSession: FirebaseAuth.User?
+    /// Tracks the current user session ID
+    @Published var userSession: String?
+    
+    /// Contains the currently logged in user
     @Published var currentUser: User?
-    private var cancellables = Set<AnyCancellable>()
-
-    init() {
-        setupSubscribers()
-        userSession = Auth.auth().currentUser
-        fetchUser()
-    }
-
+    
+    // Static mock database that persists between AuthService instances
+    private static var mockUsers: [String: User] = {
+        let testUser = User(
+            id: "mock123",
+            fullname: "Test User",
+            email: "test@example.com",
+            accountType: .passenger
+        )
+        return [testUser.id: testUser]
+    }()
+    
+    /// Mock login function
+    /// - Parameters:
+    ///   - email: User's email address
+    ///   - password: User's password
     func login(withEmail email: String, password: String) async throws {
-        do {
-            let result = try await Auth.auth().signIn(withEmail: email, password: password)
-            self.userSession = result.user
-            fetchUser()
-        } catch {
-            print("DEBUG: Failed to login with error \(error.localizedDescription)")
-            throw error
+        if email == "test@example.com" && password == "password" {
+            userSession = "mock123"
+            currentUser = Self.mockUsers["mock123"]
+        } else {
+            throw AuthError.invalidCredentials
         }
     }
-
+    
+    /// Mock user registration
     func createUser(withEmail email: String, password: String, fullname: String) async throws {
-        do {
-            let result = try await Auth.auth().createUser(withEmail: email, password: password)
-            self.userSession = result.user
-            let user = User(id: result.user.uid, fullname: fullname, email: email, accountType: .passenger)
-            let encodedUser = try Firestore.Encoder().encode(user)
-            try await Firestore.firestore().collection("users").document(user.id).setData(encodedUser)
-            fetchUser()
-        } catch {
-            print("DEBUG: Failed to create user with error \(error.localizedDescription)")
-            throw error
-        }
+        let newUser = User(
+            id: UUID().uuidString,
+            fullname: fullname,
+            email: email,
+            accountType: .passenger
+        )
+        Self.mockUsers[newUser.id] = newUser
+        userSession = newUser.id
+        currentUser = newUser
     }
-
+    
+    /// Ends the current user session
     func signout() {
-        do {
-            try Auth.auth().signOut()
-            self.userSession = nil
-            self.currentUser = nil
-        } catch {
-            print("DEBUG: Failed to sign out with error \(error.localizedDescription)")
-        }
+        userSession = nil
+        currentUser = nil
     }
+}
 
-    private func fetchUser() {
-        guard let uid = userSession?.uid else { return }
-        Firestore.firestore().collection("users").document(uid).getDocument { snapshot, _ in
-            guard let snapshot = snapshot else { return }
-            self.currentUser = try? snapshot.data(as: User.self)
-        }
-    }
-
-    private func setupSubscribers() {
-        $userSession.sink { [weak self] userSession in
-            self?.fetchUser()
-        }
-        .store(in: &cancellables)
-    }
+enum AuthError: Error {
+    case invalidCredentials
 }
