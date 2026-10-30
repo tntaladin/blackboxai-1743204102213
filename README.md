@@ -30,7 +30,7 @@ Create a new account with an email and a password of at least 8 characters. Acco
 ```sh
 swift test
 xcodegen generate
-xcodebuild test -project UberClone.xcodeproj -scheme UberClone -destination 'platform=iOS Simulator,name=iPhone 16' CODE_SIGNING_ALLOWED=NO
+xcodebuild test -project UberClone.xcodeproj -scheme UberClone -destination 'platform=iOS Simulator,name=iPhone 16' CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO
 ```
 
 Choose an installed simulator name. Core tests cover fares, state transitions, history persistence, user isolation, duplicate bookings, invalid requests, corrupt storage, and disk write failures. iOS tests cover local account persistence, sign-in, duplicate accounts, and invalid registration. GitHub Actions runs both suites and builds the iOS app.

@@ -79,7 +79,7 @@ final class AuthService: ObservableObject {
         var result: CFTypeRef?
         let status = SecItemCopyMatching(request as CFDictionary, &result)
         if status == errSecItemNotFound { return nil }
-        guard status == errSecSuccess else { throw AuthError.storage }
+        guard status == errSecSuccess else { throw AuthError.storage(operation: "read", status: status) }
         return result as? Data
     }
 
@@ -91,20 +91,22 @@ final class AuthService: ObservableObject {
             var request = query
             request[kSecValueData as String] = data
             request[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-            guard SecItemAdd(request as CFDictionary, nil) == errSecSuccess else { throw AuthError.storage }
-        } else if status != errSecSuccess { throw AuthError.storage }
+            let addStatus = SecItemAdd(request as CFDictionary, nil)
+            guard addStatus == errSecSuccess else { throw AuthError.storage(operation: "add", status: addStatus) }
+        } else if status != errSecSuccess { throw AuthError.storage(operation: "update", status: status) }
         vault = updated
     }
 }
 
 enum AuthError: LocalizedError {
-    case invalidCredentials, invalidInput, duplicateEmail, storage
+    case invalidCredentials, invalidInput, duplicateEmail
+    case storage(operation: String, status: OSStatus)
     var errorDescription: String? {
         switch self {
         case .invalidCredentials: return "The email or password is incorrect."
         case .invalidInput: return "Enter your name, a valid email, and a password with at least 8 characters."
         case .duplicateEmail: return "An account already exists with this email."
-        case .storage: return "Could not access secure storage. Please try again."
+        case let .storage(operation, status): return "Could not access secure storage (\(operation), error \(status)). Please try again."
         }
     }
 }
