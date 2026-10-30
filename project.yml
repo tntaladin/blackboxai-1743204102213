@@ -1,0 +1,57 @@
+name: UberClone
+options:
+  bundleIdPrefix: com.tntaladin
+  deploymentTarget:
+    iOS: "16.0"
+packages:
+  UberCore:
+    path: .
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    CODE_SIGN_STYLE: Automatic
+targets:
+  UberClone:
+    type: application
+    platform: iOS
+    sources:
+      - path: UberClone
+        excludes:
+          - "**/*.code-workspace"
+    dependencies:
+      - package: UberCore
+        product: UberCore
+    info:
+      path: Config/Info.plist
+      properties:
+        CFBundleDisplayName: Ride Demo
+        NSLocationWhenInUseUsageDescription: Your location is used as the pickup point when estimating a driving route.
+        UILaunchScreen: {}
+        UIApplicationSupportsIndirectInputEvents: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.tntaladin.UberClone
+        GENERATE_INFOPLIST_FILE: NO
+  UberCloneTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Tests/UberCloneTests
+    dependencies:
+      - target: UberClone
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  UberClone:
+    build:
+      targets:
+        UberClone: all
+    test:
+      targets:
+        - UberCloneTests

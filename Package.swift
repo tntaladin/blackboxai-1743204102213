@@ -1,26 +1,12 @@
-// swift-tools-version:5.5
+// swift-tools-version: 5.9
 import PackageDescription
 
 let package = Package(
-    name: "UberClone",
-    platforms: [.iOS(.v15)],
-    products: [
-        .library(
-            name: "UberClone",
-            targets: ["UberClone"]),
-    ],
-    dependencies: [
-        .package(url: "https://github.com/firebase/firebase-ios-sdk.git", from: "8.0.0"),
-    ],
+    name: "UberCore",
+    platforms: [.iOS(.v16), .macOS(.v13)],
+    products: [.library(name: "UberCore", targets: ["UberCore"])],
     targets: [
-        .target(
-            name: "UberClone",
-            dependencies: [
-                .product(name: "FirebaseAuth", package: "firebase-ios-sdk"),
-                .product(name: "FirebaseFirestore", package: "firebase-ios-sdk")
-            ]),
-        .testTarget(
-            name: "UberCloneTests",
-            dependencies: ["UberClone"]),
+        .target(name: "UberCore", path: "Core"),
+        .testTarget(name: "UberCoreTests", dependencies: ["UberCore"], path: "Tests/UberCoreTests")
     ]
 )

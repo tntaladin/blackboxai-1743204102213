@@ -1,114 +1,69 @@
 import SwiftUI
-import MapKit
 
 struct LocationSearchView: View {
+    @EnvironmentObject private var locationService: LocationService
+    @Environment(\.dismiss) private var dismiss
     @State private var searchText = ""
-    @Binding var mapState: MapViewState
-    @EnvironmentObject var locationService: LocationService
-    @State private var results = [MKLocalSearchCompletion]()
-    @State private var searchCompleter = MKLocalSearchCompleter()
-    @State private var cancellables = Set<AnyCancellable>()
+    @State private var results: [LocationItem] = []
+    @State private var isLoading = false
+    @State private var errorMessage: String?
+    let onSelect: (LocationItem) -> Void
 
     var body: some View {
-        VStack {
-            // Search header
-            HStack {
-                Circle()
-                    .fill(Color(.systemGray3))
-                    .frame(width: 8, height: 8)
-                
-                TextField("Search for a location", text: $searchText)
-                    .padding(.vertical, 8)
-                    .padding(.leading, 4)
-                    .background(Color(.systemGray5))
-                    .cornerRadius(6)
-                    .shadow(radius: 2)
-                    .onChange(of: searchText) { _ in
-                        searchCompleter.queryFragment = searchText
+        NavigationStack {
+            List {
+                if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Section("Try a destination") {
+                        ForEach(locationService.demoDestinations) { item in destinationButton(item) }
                     }
-                
-                Button {
-                    withAnimation(.spring()) {
-                        mapState = .noInput
-                    }
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.gray)
+                } else if isLoading {
+                    ProgressView("Searching…")
+                } else if let errorMessage {
+                    Text(errorMessage).foregroundStyle(.secondary)
+                } else if results.isEmpty {
+                    Text("No places found. Try a different name or address.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(results) { item in destinationButton(item) }
                 }
             }
-            .padding(.horizontal)
-            .padding(.top, 64)
-            
-            Divider()
-            
-            // Search results list
-            ScrollView {
-                VStack(alignment: .leading) {
-                    ForEach(results, id: \.self) { result in
-                        LocationSearchResultCell(
-                            title: result.title,
-                            subtitle: result.subtitle
-                        )
-                        .onTapGesture {
-                            selectLocation(result)
-                        }
-                    }
-                }
-            }
-        }
-        .background(Color.theme.backgroundColor)
-        .onAppear {
-            setupSearchCompleter()
+            .navigationTitle("Where to?")
+            .searchable(text: $searchText, prompt: "Place or address")
+            .toolbar { ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") { dismiss() }
+            } }
+            .task(id: searchText) { await search() }
         }
     }
-    
-    private func setupSearchCompleter() {
-        searchCompleter.delegate = self
-        searchCompleter.region = locationService.region
-        searchCompleter.resultTypes = .address
-    }
-    
-    private func selectLocation(_ result: MKLocalSearchCompletion) {
-        locationService.searchLocations(query: result.title)
-            .sink { completion in
-                if case .failure(let error) = completion {
-                    print("Error: \(error.localizedDescription)")
-                }
-            } receiveValue: { response in
-                withAnimation(.spring()) {
-                    if let item = response.first {
-                        let coordinate = item.placemark.coordinate
-                        locationService.selectedLocation = LocationItem(
-                            title: result.title,
-                            coordinate: coordinate
-                        )
-                        mapState = .locationSelected
-                    }
-                }
+
+    private func destinationButton(_ item: LocationItem) -> some View {
+        Button {
+            onSelect(item)
+            dismiss()
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.title).foregroundStyle(.primary)
+                Text(item.subtitle).font(.caption).foregroundStyle(.secondary)
             }
-            .store(in: &cancellables)
+        }
     }
-}
 
-extension LocationSearchView: MKLocalSearchCompleterDelegate {
-    func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
-        self.results = completer.results
+    private func search() async {
+        results = []
+        errorMessage = nil
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { isLoading = false; return }
+        isLoading = true
+        do {
+            try await Task.sleep(nanoseconds: 300_000_000)
+            let found = try await locationService.searchLocations(query: query)
+            try Task.checkCancellation()
+            results = found
+            isLoading = false
+        } catch {
+            guard !Task.isCancelled else { return }
+            isLoading = false
+            errorMessage = "Search is unavailable. Check your connection or try another place."
+        }
     }
-    
-    func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
-        print("Error in completer: \(error.localizedDescription)")
-    }
-}
-
-struct LocationSearchView_Previews: PreviewProvider {
-    static var previews: some View {
-        LocationSearchView(mapState: .constant(.searchingForLocation))
-            .environmentObject(LocationService())
-    }
-}
-
-struct LocationItem: Identifiable {
-    let id = UUID()
-    let title: String
-    let coordinate: CLLocationCoordinate2D
 }

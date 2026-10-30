@@ -40,5 +40,6 @@ struct MainTabView_Previews: PreviewProvider {
         MainTabView()
             .environmentObject(AuthService())
             .environmentObject(LocationService())
+            .environmentObject(TripStore())
     }
 }

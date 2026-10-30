@@ -2,125 +2,61 @@ import SwiftUI
 import MapKit
 
 struct UberMapView: UIViewRepresentable {
-    @EnvironmentObject var locationService: LocationService
-    @Binding var mapState: MapViewState
-    
+    @EnvironmentObject private var locationService: LocationService
+
     func makeUIView(context: Context) -> MKMapView {
-        let mapView = MKMapView()
-        mapView.delegate = context.coordinator
-        mapView.showsUserLocation = true
-        mapView.userTrackingMode = .follow
-        
-        return mapView
+        let map = MKMapView()
+        map.delegate = context.coordinator
+        map.showsUserLocation = true
+        map.setRegion(locationService.region, animated: false)
+        return map
     }
-    
-    func updateUIView(_ uiView: MKMapView, context: Context) {
-        switch mapState {
-        case .noInput:
-            context.coordinator.clearMapView(uiView)
-            uiView.setRegion(locationService.region, animated: true)
-            
-        case .searchingForLocation:
-            break
-            
-        case .locationSelected:
-            if let selectedLocation = locationService.selectedLocation {
-                context.coordinator.addAndSelectAnnotation(
-                    withCoordinate: selectedLocation.coordinate,
-                    mapView: uiView
-                )
-                context.coordinator.configurePolyline(
-                    withDestinationCoordinate: selectedLocation.coordinate,
-                    mapView: uiView
-                )
-            }
-            
-        case .polylineAdded:
-            break
-        }
-    }
-    
-    func makeCoordinator() -> MapCoordinator {
-        return MapCoordinator(parent: self)
-    }
-}
 
-extension UberMapView {
-    class MapCoordinator: NSObject, MKMapViewDelegate {
-        let parent: UberMapView
-        var userLocationCoordinate: CLLocationCoordinate2D?
-        var currentRegion: MKCoordinateRegion?
-        
-        init(parent: UberMapView) {
-            self.parent = parent
-            super.init()
+    func updateUIView(_ map: MKMapView, context: Context) {
+        let coordinator = context.coordinator
+        let destinationID = locationService.selectedLocation?.id
+        let route = locationService.route
+        let routeID = route.map { ObjectIdentifier($0) }
+        let pickup = locationService.pickupCoordinate
+        let pickupChanged = coordinator.pickup?.latitude != pickup.latitude || coordinator.pickup?.longitude != pickup.longitude
+        guard coordinator.destinationID != destinationID || coordinator.routeID != routeID || pickupChanged else { return }
+        coordinator.destinationID = destinationID
+        coordinator.routeID = routeID
+        coordinator.pickup = pickup
+        map.removeOverlays(map.overlays)
+        map.removeAnnotations(map.annotations.filter { !($0 is MKUserLocation) })
+        if locationService.usingDemoLocation {
+            let pin = MKPointAnnotation()
+            pin.title = "Demo pickup"
+            pin.coordinate = pickup
+            map.addAnnotation(pin)
         }
-        
-        func mapView(_ mapView: MKMapView, didUpdate userLocation: MKUserLocation) {
-            self.userLocationCoordinate = userLocation.coordinate
-            let region = MKCoordinateRegion(
-                center: CLLocationCoordinate2D(
-                    latitude: userLocation.coordinate.latitude,
-                    longitude: userLocation.coordinate.longitude
-                ),
-                span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
-            )
-            
-            self.currentRegion = region
-            parent.locationService.region = region
-            mapView.setRegion(region, animated: true)
+        if let destination = locationService.selectedLocation {
+            let pin = MKPointAnnotation()
+            pin.title = destination.title
+            pin.coordinate = destination.coordinate
+            map.addAnnotation(pin)
         }
-        
-        func addAndSelectAnnotation(withCoordinate coordinate: CLLocationCoordinate2D, mapView: MKMapView) {
-            mapView.removeAnnotations(mapView.annotations)
-            
-            let annotation = MKPointAnnotation()
-            annotation.coordinate = coordinate
-            mapView.addAnnotation(annotation)
-            mapView.selectAnnotation(annotation, animated: true)
+        if let route {
+            map.addOverlay(route.polyline)
+            map.setVisibleMapRect(route.polyline.boundingMapRect,
+                edgePadding: UIEdgeInsets(top: 100, left: 40, bottom: 80, right: 40), animated: true)
+        } else if destinationID == nil {
+            map.setRegion(locationService.region, animated: true)
         }
-        
-        func configurePolyline(withDestinationCoordinate coordinate: CLLocationCoordinate2D, mapView: MKMapView) {
-            guard let userLocationCoordinate = self.userLocationCoordinate else { return }
-            parent.locationService.getRoute(
-                from: userLocationCoordinate,
-                to: coordinate
-            ) { route in
-                mapView.addOverlay(route.polyline)
-                self.parent.mapState = .polylineAdded
-                let rect = mapView.mapRectThatFits(
-                    route.polyline.boundingMapRect,
-                    edgePadding: .init(
-                        top: 64,
-                        left: 32,
-                        bottom: 500,
-                        right: 32
-                    )
-                )
-                mapView.setRegion(MKCoordinateRegion(rect), animated: true)
-            }
-        }
-        
-        func clearMapView(_ mapView: MKMapView) {
-            mapView.removeAnnotations(mapView.annotations)
-            mapView.removeOverlays(mapView.overlays)
-        }
-        
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+    final class Coordinator: NSObject, MKMapViewDelegate {
+        var destinationID: UUID?
+        var routeID: ObjectIdentifier?
+        var pickup: CLLocationCoordinate2D?
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
-            if let polyline = overlay as? MKPolyline {
-                let renderer = MKPolylineRenderer(polyline: polyline)
-                renderer.strokeColor = .systemBlue
-                renderer.lineWidth = 4
-                return renderer
-            }
-            return MKOverlayRenderer(overlay: overlay)
+            guard let polyline = overlay as? MKPolyline else { return MKOverlayRenderer(overlay: overlay) }
+            let renderer = MKPolylineRenderer(polyline: polyline)
+            renderer.strokeColor = .systemBlue
+            renderer.lineWidth = 5
+            return renderer
         }
     }
-}
-
-enum MapViewState {
-    case noInput
-    case searchingForLocation
-    case locationSelected
-    case polylineAdded
 }

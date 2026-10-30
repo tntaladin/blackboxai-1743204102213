@@ -1,102 +1,59 @@
 import SwiftUI
 
 struct RegistrationView: View {
-    @State private var email = ""
+    @EnvironmentObject private var authService: AuthService
     @State private var fullname = ""
+    @State private var email = ""
     @State private var password = ""
     @State private var confirmPassword = ""
-    @State private var showAlert = false
-    @State private var alertMessage = ""
-    @EnvironmentObject var authService: AuthService
-    @Environment(\.dismiss) var dismiss
+    @State private var isSubmitting = false
+    @State private var errorMessage: String?
 
     var body: some View {
-        VStack(spacing: 24) {
-            // Header
-            VStack(alignment: .leading) {
-                Text("Create account")
-                    .font(.largeTitle)
-                    .fontWeight(.semibold)
-                
-                Text("Sign up to get started")
-                    .font(.subheadline)
-                    .foregroundStyle(.gray)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding()
-            
-            // Input fields
-            VStack(spacing: 16) {
-                InputField(text: $fullname, title: "Full Name", placeholder: "Enter your full name")
-                
-                InputField(text: $email, title: "Email Address", placeholder: "name@example.com")
+        Form {
+            Section("Your details") {
+                TextField("Full name", text: $fullname).textContentType(.name)
+                TextField("Email", text: $email)
                     .keyboardType(.emailAddress)
                     .textInputAutocapitalization(.never)
-                
-                InputField(text: $password, title: "Password", placeholder: "Enter your password", isSecureField: true)
-                
-                InputField(text: $confirmPassword, title: "Confirm Password", placeholder: "Confirm your password", isSecureField: true)
+                    .autocorrectionDisabled()
+                    .textContentType(.username)
+                SecureField("Password (8+ characters)", text: $password)
+                    .textContentType(.newPassword)
+                SecureField("Confirm password", text: $confirmPassword)
+                    .textContentType(.newPassword)
             }
-            .padding(.horizontal)
-            
-            // Sign up button
-            Button {
-                Task {
-                    do {
-                        guard password == confirmPassword else {
-                            alertMessage = "Passwords don't match"
-                            showAlert = true
-                            return
-                        }
-                        
-                        try await authService.createUser(
-                            withEmail: email,
-                            password: password,
-                            fullname: fullname
-                        )
-                    } catch {
-                        alertMessage = error.localizedDescription
-                        showAlert = true
+            Section {
+                Button(action: register) {
+                    HStack {
+                        Text("Create account")
+                        Spacer()
+                        if isSubmitting { ProgressView() }
                     }
-                }
-            } label: {
-                HStack {
-                    Text("SIGN UP")
-                        .fontWeight(.semibold)
-                    Image(systemName: "arrow.right")
-                }
-                .foregroundColor(.white)
-                .frame(width: UIScreen.main.bounds.width - 32, height: 48)
-            }
-            .background(Color(.systemBlue))
-            .cornerRadius(10)
-            .padding(.top)
-            
-            Spacer()
-            
-            // Sign in link
-            Button {
-                dismiss()
-            } label: {
-                HStack(spacing: 3) {
-                    Text("Already have an account?")
-                    Text("Sign in")
-                        .fontWeight(.bold)
-                }
-                .font(.system(size: 14))
+                }.disabled(isSubmitting || fullname.isEmpty || email.isEmpty || password.isEmpty || confirmPassword.isEmpty)
+            } footer: {
+                Text("Demo accounts stay on this device. Use a test password, not one you use elsewhere.")
             }
         }
-        .alert("Error", isPresented: $showAlert) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(alertMessage)
-        }
+        .navigationTitle("Create account")
+        .alert("Could not create account", isPresented: Binding(
+            get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+                Button("OK") { errorMessage = nil }
+            } message: { Text(errorMessage ?? "") }
     }
-}
 
-struct RegistrationView_Previews: PreviewProvider {
-    static var previews: some View {
-        RegistrationView()
-            .environmentObject(AuthService())
+    private func register() {
+        guard !isSubmitting else { return }
+        guard password == confirmPassword else {
+            errorMessage = "Passwords do not match."
+            return
+        }
+        isSubmitting = true
+        Task {
+            defer { isSubmitting = false }
+            do {
+                try await authService.createUser(withEmail: email, password: password, fullname: fullname)
+            } catch { errorMessage = error.localizedDescription }
+        }
     }
 }
