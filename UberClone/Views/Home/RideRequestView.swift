@@ -1,204 +1,60 @@
 import SwiftUI
-import MapKit
+import UberCore
 
 struct RideRequestView: View {
+    @EnvironmentObject private var locationService: LocationService
+    @EnvironmentObject private var authService: AuthService
+    @EnvironmentObject private var tripStore: TripStore
     @State private var selectedRideType: RideType = .uberX
-    @EnvironmentObject var locationService: LocationService
-    
+
     var body: some View {
-        VStack(spacing: 16) {
-            Capsule()
-                .foregroundColor(Color(.systemGray5))
-                .frame(width: 48, height: 6)
-                .padding(.top, 8)
-            
-            // Trip info
-            HStack {
-                VStack(spacing: 4) {
-                    Circle()
-                        .fill(Color(.systemGray3))
-                        .frame(width: 8, height: 8)
-                    
-                    Rectangle()
-                        .fill(Color(.systemGray3))
-                        .frame(width: 1, height: 32)
-                    
-                    Rectangle()
-                        .fill(.black)
-                        .frame(width: 8, height: 8)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text(locationService.selectedLocation?.title ?? "Destination").font(.headline)
+                    Spacer()
+                    Button("Change") { locationService.clearSelection() }
                 }
-                
-                VStack(alignment: .leading, spacing: 24) {
+                if locationService.isRouting {
+                    ProgressView("Calculating driving route…")
+                } else if let error = locationService.routeError {
+                    Text(error).font(.callout).foregroundStyle(.red)
+                    Button("Retry route") { Task { await locationService.loadRoute() } }
+                } else if let distance = locationService.distanceMeters {
+                    Text("\(distance / 1000, specifier: "%.1f") km · \(locationService.arrivalText)")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                    Picker("Ride type", selection: $selectedRideType) {
+                        ForEach(RideType.allCases) { type in
+                            Text(type.title).tag(type)
+                        }
+                    }.pickerStyle(.segmented)
                     HStack {
-                        Text("Current location")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.gray)
-                        
+                        Label("Up to \(selectedRideType.capacity) passengers", systemImage: "person.2.fill")
                         Spacer()
-                        
-                        Text(locationService.pickupTime ?? "")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.gray)
-                    }
-                    
-                    HStack {
-                        if let location = locationService.selectedLocation {
-                            Text(location.title)
-                                .font(.system(size: 16, weight: .semibold))
-                        }
-                        
-                        Spacer()
-                        
-                        Text(locationService.dropOffTime ?? "")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.gray)
-                    }
+                        Text(selectedRideType.fare(distanceMeters: distance), format: .currency(code: "USD"))
+                            .font(.title3.bold())
+                    }.font(.caption)
                 }
-                .padding(.leading, 8)
-            }
-            .padding()
-            
-            Divider()
-            
-            // Ride type selection
-            Text("SUGGESTED RIDES")
-                .font(.subheadline)
-                .fontWeight(.semibold)
-                .foregroundColor(.gray)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding()
-            
-            ScrollView(.horizontal) {
-                HStack(spacing: 12) {
-                    ForEach(RideType.allCases) { type in
-                        VStack(alignment: .leading) {
-                            Image(type.imageName)
-                                .resizable()
-                                .scaledToFit()
-                            
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(type.description)
-                                    .font(.system(size: 14, weight: .semibold))
-                                
-                                Text(locationService.computeRidePrice(forType: type).toCurrency())
-                                    .font(.system(size: 14, weight: .semibold))
-                            }
-                            .padding(8)
-                        }
-                        .frame(width: 112, height: 140)
-                        .background(Color(type == selectedRideType ? .systemBlue : .systemGroupedBackground))
-                        .foregroundColor(type == selectedRideType ? .white : .black)
-                        .cornerRadius(10)
-                        .onTapGesture {
-                            withAnimation(.spring()) {
-                                selectedRideType = type
-                            }
-                        }
-                    }
-                }
-            }
-            .padding(.horizontal)
-            
-            Divider()
-                .padding(.vertical, 8)
-            
-            // Payment info
-            HStack(spacing: 12) {
-                Text("Visa")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .padding(6)
-                    .background(.blue)
-                    .cornerRadius(4)
-                    .foregroundColor(.white)
-                
-                Text("**** 1234")
-                    .fontWeight(.bold)
-                
-                Spacer()
-                
-                Image(systemName: "chevron.right")
-                    .imageScale(.medium)
-            }
-            .padding()
-            .background(Color(.systemGroupedBackground))
-            .cornerRadius(10)
-            .padding(.horizontal)
-            
-            // Request ride button
-            Button {
-                // Handle ride request
-            } label: {
-                Text("CONFIRM RIDE")
-                    .fontWeight(.bold)
-                    .frame(width: UIScreen.main.bounds.width - 32, height: 50)
-                    .background(.blue)
-                    .cornerRadius(10)
-                    .foregroundColor(.white)
-            }
+                Text("Demo estimate in USD. No driver is dispatched and no payment is collected.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Button("Confirm demo ride") { confirm() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(locationService.distanceMeters == nil || locationService.isRouting || authService.userSession == nil)
+                    .frame(maxWidth: .infinity)
+            }.padding()
         }
-        .padding(.bottom, 24)
-        .background(Color.theme.backgroundColor)
-        .cornerRadius(16)
+        .frame(maxHeight: 300)
+        .background(.regularMaterial)
     }
-}
 
-struct RideRequestView_Previews: PreviewProvider {
-    static var previews: some View {
-        RideRequestView()
-            .environmentObject(LocationService())
-    }
-}
-
-enum RideType: Int, CaseIterable, Identifiable {
-    case uberX
-    case uberBlack
-    case uberXL
-    
-    var id: Int { return rawValue }
-    
-    var description: String {
-        switch self {
-        case .uberX: return "UberX"
-        case .uberBlack: return "Uber Black"
-        case .uberXL: return "UberXL"
+    private func confirm() {
+        guard let userID = authService.userSession,
+              let destination = locationService.selectedLocation,
+              let distance = locationService.distanceMeters else { return }
+        if tripStore.request(userID: userID,
+            pickup: locationService.usingDemoLocation ? "San Francisco demo pickup" : "Current location",
+            destination: destination.title, price: selectedRideType.fare(distanceMeters: distance), type: selectedRideType) {
+            locationService.clearSelection()
         }
-    }
-    
-    var imageName: String {
-        switch self {
-        case .uberX: return "uber-x"
-        case .uberBlack: return "uber-black"
-        case .uberXL: return "uber-x"
-        }
-    }
-    
-    var baseFare: Double {
-        switch self {
-        case .uberX: return 5
-        case .uberBlack: return 20
-        case .uberXL: return 10
-        }
-    }
-}
-
-extension LocationService {
-    func computeRidePrice(forType type: RideType) -> Double {
-        guard let userLocation = self.userLocation else { return type.baseFare }
-        guard let destination = self.selectedLocation else { return type.baseFare }
-        
-        let userCoordinate = CLLocation(latitude: userLocation.latitude, longitude: userLocation.longitude)
-        let destinationCoordinate = CLLocation(latitude: destination.coordinate.latitude, longitude: destination.coordinate.longitude)
-        
-        let distanceInMeters = userCoordinate.distance(from: destinationCoordinate)
-        let distanceInMiles = distanceInMeters / 1609.34
-        
-        return distanceInMiles * 1.5 + type.baseFare
-    }
-}
-
-extension Double {
-    func toCurrency() -> String {
-        return String(format: "$%.2f", self)
     }
 }

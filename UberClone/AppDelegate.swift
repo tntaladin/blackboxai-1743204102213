@@ -1,14 +1,19 @@
-import UIKit
-import FirebaseCore
+import SwiftUI
 
 @main
-class AppDelegate: UIResponder, UIApplicationDelegate {
-    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        FirebaseApp.configure()
-        return true
-    }
+struct UberCloneApp: App {
+    @StateObject private var authService = AuthService()
+    @StateObject private var locationService = LocationService()
+    @StateObject private var tripStore = TripStore()
+    @AppStorage("darkMode") private var darkMode = false
 
-    func application(_ application: UIApplication, configurationForConnecting connectingSceneSession: UISceneSession, options: UIScene.ConnectionOptions) -> UISceneConfiguration {
-        return UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+                .environmentObject(authService)
+                .environmentObject(locationService)
+                .environmentObject(tripStore)
+                .preferredColorScheme(darkMode ? .dark : .light)
+        }
     }
 }

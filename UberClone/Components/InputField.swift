@@ -9,7 +9,7 @@ struct InputField: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
-                .foregroundColor(Color(.darkGray))
+                .foregroundStyle(.secondary)
                 .fontWeight(.semibold)
                 .font(.footnote)
             
